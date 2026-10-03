@@ -165,6 +165,8 @@ pub fn manifest() -> serde_json::Value {
         "tools": [tool_definition()],
         "commands": [],
         "hooks": ["prompt/context"],
+        // `host/ask` is a gated host surface: undeclared, gray refuses it.
+        "capabilities": ["host.ask"],
     })
 }
 
@@ -178,6 +180,11 @@ pub fn prompt_guidance() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manifest_declares_the_ask_capability() {
+        assert_eq!(manifest()["capabilities"], serde_json::json!(["host.ask"]));
+    }
 
     fn q(options: usize) -> UserQuestion {
         UserQuestion {
