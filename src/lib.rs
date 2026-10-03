@@ -41,6 +41,9 @@ pub struct UserAnswer {
 
 /// Tool name the model calls.
 pub const TOOL_NAME: &str = "request_user_input";
+/// Display name hosts show for the tool (manifest `label`); never sent to
+/// the model.
+pub const TOOL_LABEL: &str = "Request User Input";
 /// Protocol version claimed in `plugin/manifest`.
 pub const PROTOCOL: &str = "1.1";
 /// Plugin name claimed in `plugin/manifest`.
@@ -49,7 +52,9 @@ pub const PLUGIN_NAME: &str = "questions";
 pub const HOST_ASK: &str = "host/ask";
 
 pub const OTHER_OPTION_LABEL: &str = "None of the above";
-pub const OTHER_OPTION_DESCRIPTION: &str = "Optionally, add details in notes (tab).";
+/// Surface-neutral on purpose: the host decides how notes are typed (a TUI
+/// modal, a stdin prompt, a chat form), so the text names none of them.
+pub const OTHER_OPTION_DESCRIPTION: &str = "Optionally, add details in your own words.";
 
 /// Codex normalization: every question needs options, and an "Other" option
 /// is always added client-side.
@@ -108,6 +113,7 @@ pub fn parse_ask_result(v: &serde_json::Value) -> Vec<UserAnswer> {
 pub fn tool_definition() -> serde_json::Value {
     serde_json::json!({
         "name": TOOL_NAME,
+        "label": TOOL_LABEL,
         "description": "Request user input for one to three short questions and wait for the response.",
         "parameters": {
             "type": "object",
@@ -229,10 +235,16 @@ mod tests {
     }
 
     #[test]
+    fn other_option_names_no_particular_surface() {
+        assert!(!OTHER_OPTION_DESCRIPTION.contains("tab"));
+    }
+
+    #[test]
     fn manifest_shape() {
         let m = manifest();
         assert_eq!(m["name"], "questions");
         assert_eq!(m["protocol"], "1.1");
         assert_eq!(m["tools"][0]["name"], "request_user_input");
+        assert_eq!(m["tools"][0]["label"], "Request User Input");
     }
 }
