@@ -3,7 +3,7 @@ name = "gray-questions"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "User-question sidecar plugin for the gray agent harness (wire v1)."
+description = "Structured clarifying questions for interactive agent sessions"
 
 [[bin]]
 name = "questions"

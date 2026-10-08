@@ -1,45 +1,48 @@
-# gray-questions
+<p align="center">
+  <img src="assets/gray-logo.svg" alt="gray" width="96">
+</p>
+<h1 align="center">gray-questions</h1>
+<p align="center">Structured clarifying questions for interactive agent sessions.</p>
+<p align="center">
+  <a href="https://github.com/vstaln/gray-questions/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="gray plugin" src="https://img.shields.io/badge/gray-plugin-7aa2f7.svg">
+  <img alt="rust" src="https://img.shields.io/badge/built%20with-rust-orange.svg">
+</p>
 
-Sidecar plugin for the [gray](https://github.com/vstaln/gray) agent harness:
-the AI asking **you** clarifying questions (`request_user_input`).
-
-Rust, std-only I/O over the gray wire v1 (NDJSON over stdio). No async
-runtime, no gray dependencies — the binary is self-contained.
+A self-contained Rust sidecar that gives the agent a structured
+`request_user_input` tool for asking you 1–3 multiple-choice questions.
 
 ## What it does
 
-- Exposes one tool, `request_user_input`: 1–3 multiple-choice questions,
-  options + free-form notes — the codex shape, verbatim schema.
-- Validation is the plugin's: non-empty options per question, max 3,
-  `is_other` forced (the client adds "None of the above" automatically).
-- Asking is the host's: `tool/call` sends `host/ask` and waits up to 300s
-  for the `{"answers": …}` reply. No host handler → loud error, never a hang.
-- Claims `prompt/context` to inject the 2-line usage guidelines into the
-  system prompt.
+- Exposes `request_user_input` with question text, selectable options, and
+  free-form notes.
+- Validates input in the plugin: 1–3 questions, non-empty options, and an
+  automatic "None of the above" path.
+- Delegates asking to the host with `host/ask` and waits up to 300 seconds
+  for the `{"answers": …}` reply. Missing host support returns a loud
+  error instead of hanging.
+- Claims `prompt/context` to inject short usage guidelines into the system
+  prompt.
 
 ## Where questions show up
 
-The plugin never talks to a person itself; it asks the host (`host/ask`), and
-whatever hosts gray decides how the question is shown. gray has no question
-tool of its own, so nothing asks unless this plugin is installed.
+The plugin never renders UI itself; it asks the host, and the host decides
+how the question is presented.
 
 - **Terminal (TUI):** an inline modal above the input box.
-- **Piped stdin:** one prompt per question; no stdin at all resolves empty.
+- **Piped stdin:** one prompt per question; no stdin resolves empty.
 - **`gray -p --json` with `GRAY_JSON_ASK=1`:** the question goes out as an
   `ask` progress row and the answer comes back on stdin, so the program
-  driving gray shows it in its own UI. The Discord bridge
-  (gray-discord-plugin) uses this to post a question card with buttons, a
-  menu and a free-text form.
+  driving gray can render its own UI.
 
 ## Install
 
-Requires a gray build with the `host/ask` bridge (gray ≥ 0.1.0 with
-`feat/plugin-ask`):
+Requires a gray build with the `host/ask` bridge:
 
 ```sh
 cargo build --release
-gray plugin install <release-tarball-url>   # day one
-gray plugin install questions               # after index publish
+gray plugin install <release-tarball-url>
+gray plugin install questions
 ```
 
 ## Development
@@ -52,6 +55,10 @@ cargo fmt --check
 ## Wire
 
 - `plugin/manifest` → `{name: "questions", tools: [request_user_input], hooks: ["prompt/context"]}`
-- `tool/call` → delegates to `host/ask`, returns `{"content": "{\"answers\": …}"}`
+- `tool/call` → delegates to `host/ask`, returns `{"content": "{"answers": …}"}`
 - `prompt/context` → usage guidelines text
 - `event/notify`, unknown lines → ignored; `plugin/shutdown` → clean exit
+
+---
+Part of the [gray](https://github.com/vstaln/gray) plugin ecosystem —
+the open-source AI agent harness. <https://gray.alignment.id>

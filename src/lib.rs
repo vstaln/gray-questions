@@ -3,11 +3,10 @@
 //! (`src/main.rs`) and the host-side asker (`gray` crate) must agree on
 //! these shapes; this lib is the single definition.
 //!
-//! History: ported from gray's deleted builtins
+//! History: reshaped from gray's former builtins
 //! (`crates/gray-core/src/questions.rs` +
-//! `crates/gray-tools/src/request_user_input.rs` at `d81c1a7`), reshaped as
-//! a sidecar: the plugin owns schema + validation, the host owns user I/O
-//! via `host/ask`.
+//! `crates/gray-tools/src/request_user_input.rs`) as a sidecar: the plugin
+//! owns schema + validation, the host owns user I/O via `host/ask`.
 
 use serde::{Deserialize, Serialize};
 
