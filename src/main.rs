@@ -105,6 +105,10 @@ fn tool_call(
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("manifest") {
+        println!("{}", manifest());
+        return;
+    }
     let stdout = Arc::new(Mutex::new(std::io::stdout()));
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
     let counter = Arc::new(Mutex::new(0u64));
