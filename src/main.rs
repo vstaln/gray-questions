@@ -7,6 +7,8 @@
 //! - host→sidecar `{"id":N,"method":"plugin/manifest"}` → `{"id":N,"result":{…}}`
 //! - host→sidecar `{"id":N,"method":"tool/call","params":{"name","args",…}}`
 //! - host→sidecar `{"id":N,"method":"prompt/context","params":{"cwd",…}}`
+//! - host→sidecar `{"id":N,"method":"<anything else>"}` →
+//!   `{"id":N,"error":{"code":-32601,"message":"method not found: <m>"}}`
 //! - host→sidecar `{"method":"event/notify",…}` (no id: ignored, no reply)
 //! - host→sidecar `{"method":"plugin/shutdown"}` (no id: exit cleanly)
 //! - sidecar→host `{"id":"<n>","method":"host/ask","params":{…}}` →
@@ -22,6 +24,12 @@ use std::time::Duration;
 /// Must sit under the host's ask-gated outer deadline (330s) so the plugin
 /// reports its own timeout instead of surfacing the host's generic one.
 const ASK_TTL: Duration = Duration::from_secs(300);
+
+/// How long a `blocking:false` call waits for the host's auto-resolve
+/// reply. The host answers non-blocking asks immediately with empty
+/// answers (`handle_ask` in `crates/gray/src/ask.rs`), so this bound only
+/// matters when the host is wedged.
+const NONBLOCK_TTL: Duration = Duration::from_secs(120);
 
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<serde_json::Value>>>>;
 
@@ -86,7 +94,9 @@ fn tool_call(
     let (tx, rx) = mpsc::channel();
     pending.lock().expect("pending").insert(id.clone(), tx);
     send_host_ask(out, &id, &normalized, blocking);
-    match rx.recv_timeout(ASK_TTL) {
+    let result = rx.recv_timeout(if blocking { ASK_TTL } else { NONBLOCK_TTL });
+    pending.lock().expect("pending").remove(&id);
+    match result {
         Ok(result) => {
             if let Some(err) = result.get("error").and_then(|e| e.as_str()) {
                 return serde_json::json!({
@@ -95,8 +105,14 @@ fn tool_call(
                 });
             }
             let answers = gray_questions::parse_ask_result(&result);
+            // The wire has no late-answer channel, so an answerless
+            // non-blocking resolve is reported as "no answer yet".
+            if !blocking && answers.iter().all(|a| a.answers.is_empty()) {
+                return serde_json::json!({ "content": gray_questions::NO_ANSWER_YET });
+            }
             serde_json::json!({ "content": answers_to_json(&answers).to_string() })
         }
+        Err(_) if !blocking => serde_json::json!({ "content": gray_questions::NO_ANSWER_YET }),
         Err(_) => serde_json::json!({
             "content": "request_user_input: host did not answer in time",
             "is_error": true,
@@ -157,23 +173,33 @@ fn main() {
             .get("params")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
-        let result = match method {
-            "plugin/manifest" => manifest(),
-            "prompt/context" => serde_json::json!({ "text": prompt_guidance() }),
+        // Every numbered request gets exactly one reply: a result for
+        // known methods, the method-not-found error otherwise.
+        let reply = match method {
+            "plugin/manifest" => serde_json::json!({ "id": id, "result": manifest() }),
+            "prompt/context" => {
+                serde_json::json!({ "id": id, "result": { "text": prompt_guidance() } })
+            }
             "tool/call" => {
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                if name == gray_questions::TOOL_NAME || name.is_empty() {
+                let result = if name == gray_questions::TOOL_NAME || name.is_empty() {
                     tool_call(&stdout, &pending, &counter, &params)
                 } else {
                     serde_json::json!({
                         "content": format!("unknown tool: {name}"),
                         "is_error": true,
                     })
-                }
+                };
+                serde_json::json!({ "id": id, "result": result })
             }
-            _ => continue, // unknown methods/lines are ignored
+            _ => serde_json::json!({
+                "id": id,
+                "error": {
+                    "code": -32601,
+                    "message": format!("method not found: {method}"),
+                },
+            }),
         };
-        let reply = serde_json::json!({ "id": id, "result": result });
         let mut o = stdout.lock().expect("stdout");
         let _ = writeln!(o, "{reply}");
         let _ = o.flush();

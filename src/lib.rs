@@ -55,6 +55,12 @@ pub const OTHER_OPTION_LABEL: &str = "None of the above";
 /// modal, a stdin prompt, a chat form), so the text names none of them.
 pub const OTHER_OPTION_DESCRIPTION: &str = "Optionally, add details in your own words.";
 
+/// Tool result for a `blocking:false` call that resolves without user
+/// input. The wire has no late-answer channel — the host auto-resolves
+/// non-blocking asks (`{"answers": {}}`) and `host/say` never reaches the
+/// model — so the honest answer is "not yet".
+pub const NO_ANSWER_YET: &str = "no answer yet — keep working; ask again later if still needed";
+
 /// Codex normalization: every question needs options, and an "Other" option
 /// is always added client-side.
 pub fn normalize_questions(mut args: Vec<UserQuestion>) -> Result<Vec<UserQuestion>, String> {
@@ -146,7 +152,7 @@ pub fn tool_definition() -> serde_json::Value {
                 },
                 "blocking": {
                     "type": "boolean",
-                    "description": "Wait for answers before continuing (default true). When false the agent keeps working; answers arrive as a follow-up message or auto-resolve after 2 minutes."
+                    "description": "Wait for answers before continuing (default true). When false the call returns at once without waiting for the user, reporting \"no answer yet\"; call again with blocking true once the answer is needed."
                 }
             },
             "required": ["questions"],
