@@ -149,10 +149,6 @@ pub fn tool_definition() -> serde_json::Value {
                         "required": ["id", "header", "question", "options"],
                         "additionalProperties": false
                     }
-                },
-                "blocking": {
-                    "type": "boolean",
-                    "description": "Wait for answers before continuing (default true). When false the call returns at once without waiting for the user, reporting \"no answer yet\"; call again with blocking true once the answer is needed."
                 }
             },
             "required": ["questions"],

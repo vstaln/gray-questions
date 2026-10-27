@@ -53,16 +53,15 @@ impl Harness {
 
     /// Next line that is NOT a sidecar→host request (string id + method).
     fn next_host_reply(&self) -> serde_json::Value {
-        loop {
-            let v = self.next();
-            let is_sidecar_req = v.get("id").and_then(|i| i.as_str()).is_some()
-                && v.get("method").and_then(|m| m.as_str()).is_some();
-            if !is_sidecar_req {
-                return v;
-            }
-            // stow nothing: callers that expect host/ask use next_ask()
-            panic!("expected host reply, got sidecar request: {v}");
-        }
+        let v = self.next();
+        let is_sidecar_req = v.get("id").and_then(|i| i.as_str()).is_some()
+            && v.get("method").and_then(|m| m.as_str()).is_some();
+        // callers that expect host/ask use next_ask()
+        assert!(
+            !is_sidecar_req,
+            "expected host reply, got sidecar request: {v}"
+        );
+        v
     }
 
     fn next_ask(&self) -> (String, serde_json::Value) {

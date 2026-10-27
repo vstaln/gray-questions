@@ -87,10 +87,11 @@ fn tool_call(
         Ok(q) => q,
         Err(e) => return serde_json::json!({ "content": e, "is_error": true }),
     };
-    let blocking = args
-        .get("blocking")
-        .and_then(|b| b.as_bool())
-        .unwrap_or(true);
+    // `blocking:false` used to exist, but gray's host resolves a
+    // non-blocking ask at once with empty answers and never draws it, so
+    // the question was invisible. Every ask now blocks and is shown; a
+    // stray `blocking` from an old prompt is ignored.
+    let blocking = true;
     let id = next_id(counter);
     let (tx, rx) = mpsc::channel();
     pending.lock().expect("pending").insert(id.clone(), tx);
