@@ -49,9 +49,7 @@ fn send_host_ask(
     let req = serde_json::json!({
         "id": id,
         "method": gray_questions::HOST_ASK,
-        // `echo: false`: the host draws the questions and answers inside
-        // this tool's own card, so it skips its plain `? … / → …` echo.
-        "params": { "questions": questions, "blocking": blocking, "echo": false },
+        "params": { "questions": questions, "blocking": blocking },
     });
     let mut o = out.lock().expect("stdout");
     let _ = writeln!(o, "{req}");

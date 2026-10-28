@@ -133,7 +133,6 @@ fn tool_call_round_trips_host_ask() {
     }));
     let (ask_id, ask) = h.next_ask();
     assert_eq!(ask["params"]["blocking"], true);
-    assert_eq!(ask["params"]["echo"], false);
     assert_eq!(ask["params"]["questions"][0]["id"], "color");
     // host answers; plugin must normalize (is_other forced) silently
     h.send(&serde_json::json!({
