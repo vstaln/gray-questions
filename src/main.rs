@@ -20,10 +20,11 @@ use std::io::{BufRead, Write};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-/// How long `tool/call` waits for a `host/ask` reply before failing loudly.
-/// Must sit under the host's ask-gated outer deadline (330s) so the plugin
-/// reports its own timeout instead of surfacing the host's generic one.
-const ASK_TTL: Duration = Duration::from_secs(300);
+/// How long `tool/call` waits for a `host/ask` reply. A blocking question
+/// waits for the user (Esc cancels it), so this is only a wedged-host
+/// ceiling: above the host's ask handler (23h) so the host's own reply
+/// arrives first, under its tool-call deadline (24h) so we still report.
+const ASK_TTL: Duration = Duration::from_secs(23 * 3600 + 1800);
 
 /// How long a `blocking:false` call waits for the host's auto-resolve
 /// reply. The host answers non-blocking asks immediately with empty
