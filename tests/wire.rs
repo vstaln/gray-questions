@@ -57,7 +57,10 @@ impl Harness {
         let is_sidecar_req = v.get("id").and_then(|i| i.as_str()).is_some()
             && v.get("method").and_then(|m| m.as_str()).is_some();
         // stow nothing: callers that expect host/ask use next_ask()
-        assert!(!is_sidecar_req, "expected host reply, got sidecar request: {v}");
+        assert!(
+            !is_sidecar_req,
+            "expected host reply, got sidecar request: {v}"
+        );
         v
     }
 
