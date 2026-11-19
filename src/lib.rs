@@ -14,7 +14,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserOption {
     pub label: String,
+    #[serde(default)]
     pub description: String,
+    /// Picking this option opens a note editor instead of answering with the
+    /// label ("Deny with a reason"); the host ships the text as `user_note:`.
+    #[serde(default)]
+    pub freeform: bool,
 }
 
 /// One question in a request.
@@ -23,8 +28,12 @@ pub struct UserQuestion {
     pub id: String,
     pub header: String,
     pub question: String,
+    /// Empty means a pure free-text question: the host shows one editor.
     #[serde(default)]
     pub options: Vec<UserOption>,
+    /// The user may pick several options instead of one.
+    #[serde(default)]
+    pub multi: bool,
     /// Frontend adds an extra free-form "Other" option (codex forces this true).
     #[serde(default)]
     pub is_other: bool,
@@ -61,11 +70,16 @@ pub const OTHER_OPTION_DESCRIPTION: &str = "Optionally, add details in your own 
 /// model — so the honest answer is "not yet".
 pub const NO_ANSWER_YET: &str = "no answer yet — keep working; ask again later if still needed";
 
-/// Codex normalization: every question needs options, and an "Other" option
-/// is always added client-side.
+pub const MAX_QUESTIONS: usize = 12;
+pub const MAX_OPTIONS: usize = 20;
+
+/// Normalization: an "Other" row is always offered unless the question is
+/// already free text, where the editor is the other row.
 pub fn normalize_questions(mut args: Vec<UserQuestion>) -> Result<Vec<UserQuestion>, String> {
-    if args.iter().any(|q| q.options.is_empty()) {
-        return Err("request_user_input requires non-empty options for every question".to_string());
+    if args.iter().any(|q| q.options.len() > MAX_OPTIONS) {
+        return Err(format!(
+            "request_user_input accepts at most {MAX_OPTIONS} options per question;              a longer list is a menu, not a question"
+        ));
     }
     for q in &mut args {
         q.is_other = true;
@@ -74,8 +88,25 @@ pub fn normalize_questions(mut args: Vec<UserQuestion>) -> Result<Vec<UserQuesti
 }
 
 pub fn validate_tool_args(questions: &[UserQuestion]) -> Result<(), String> {
-    if questions.is_empty() || questions.len() > 3 {
-        return Err("request_user_input requires 1-3 questions".to_string());
+    if questions.is_empty() || questions.len() > MAX_QUESTIONS {
+        return Err(format!(
+            "request_user_input requires 1-{MAX_QUESTIONS} questions"
+        ));
+    }
+    let mut ids = std::collections::HashSet::new();
+    for q in questions {
+        if q.id.trim().is_empty() {
+            return Err("request_user_input requires an id for every question".to_string());
+        }
+        if !ids.insert(q.id.as_str()) {
+            return Err(format!("request_user_input got a duplicate id: {}", q.id));
+        }
+        if q.question.trim().is_empty() {
+            return Err(format!(
+                "request_user_input got an empty question: {}",
+                q.id
+            ));
+        }
     }
     normalize_questions(questions.to_vec()).map(|_| ())
 }
@@ -119,34 +150,36 @@ pub fn tool_definition() -> serde_json::Value {
     serde_json::json!({
         "name": TOOL_NAME,
         "label": TOOL_LABEL,
-        "description": "Request user input for one to three short questions and wait for the response.",
+        "description": "Ask the user one or more questions, each with any mix of multiple-choice options and free text, and wait for the answers.",
         "parameters": {
             "type": "object",
             "properties": {
                 "questions": {
                     "type": "array",
-                    "description": "Questions to show the user. Prefer 1 and do not exceed 3",
+                    "description": "Questions to ask. Prefer 1; ask several only when you genuinely need several answered at once.",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "string", "description": "Stable identifier for mapping answers (snake_case)."},
+                            "id": {"type": "string", "description": "Stable identifier for mapping answers (snake_case), unique in the request."},
                             "header": {"type": "string", "description": "Short header label shown in the UI (12 or fewer chars)."},
-                            "question": {"type": "string", "description": "Single-sentence prompt shown to the user."},
+                            "question": {"type": "string", "description": "The question, in one sentence. Further lines become the subject shown under it."},
+                            "multi": {"type": "boolean", "description": "Let the user pick several options instead of one."},
                             "options": {
                                 "type": "array",
-                                "description": "Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.",
+                                "description": "Choices offered. Omit or leave empty for a free-text question. Put the recommended option first and suffix its label with \"(Recommended)\". Do not add an \"Other\" option; the client appends a free-form row automatically unless the option list is empty.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
                                         "label": {"type": "string", "description": "User-facing label (1-5 words)."},
-                                        "description": {"type": "string", "description": "One short sentence explaining impact/tradeoff if selected."}
+                                        "description": {"type": "string", "description": "One short sentence explaining impact/tradeoff if selected."},
+                                        "freeform": {"type": "boolean", "description": "Picking this opens a note editor and sends the typed text instead of the label, e.g. a \"Deny with a reason\" row."}
                                     },
-                                    "required": ["label", "description"],
+                                    "required": ["label"],
                                     "additionalProperties": false
                                 }
                             }
                         },
-                        "required": ["id", "header", "question", "options"],
+                        "required": ["id", "header", "question"],
                         "additionalProperties": false
                     }
                 },
@@ -177,9 +210,11 @@ pub fn manifest() -> serde_json::Value {
 
 /// The `prompt/context` guidance text (usage guidelines for the model).
 pub fn prompt_guidance() -> &'static str {
-    "request_user_input — ask the user 1-3 multiple-choice questions when a decision blocks progress. \
-     Use it when a concrete decision blocks progress and the choices are few; act on sensible defaults otherwise. \
-     Ask 1 question when possible (max 3); give each 2-3 mutually exclusive options, recommended first with a \"(Recommended)\" suffix."
+    "request_user_input — ask the user when a decision blocks progress and only they can make it. \
+     Prefer acting on a sensible default; ask when being wrong is expensive or the choice is genuinely theirs. \
+     Ask one question when one is enough; batch several only when they belong together. \
+     Offer a few mutually exclusive options, recommended first with a \"(Recommended)\" suffix, and set \"multi\": true when several can apply. \
+     Leave options empty to ask for free text, and use a freeform option to invite a reason alongside a decision."
 }
 
 #[cfg(test)]
@@ -200,16 +235,18 @@ mod tests {
                 .map(|i| UserOption {
                     label: format!("o{i}"),
                     description: "d".into(),
+                    freeform: false,
                 })
                 .collect(),
+            multi: false,
             is_other: false,
         }
     }
 
     #[test]
-    fn normalize_requires_options() {
-        assert!(normalize_questions(vec![q(0), q(2)]).is_err());
-        assert!(normalize_questions(vec![q(2), q(3)]).is_ok());
+    fn normalize_allows_free_text_and_caps_options() {
+        assert!(normalize_questions(vec![q(0), q(2)]).is_ok());
+        assert!(normalize_questions(vec![q(2), q(MAX_OPTIONS + 1)]).is_err());
     }
 
     #[test]
@@ -219,10 +256,20 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_count() {
+    fn validate_rejects_count_and_duplicate_ids() {
         assert!(validate_tool_args(&[]).is_err());
-        assert!(validate_tool_args(&[q(1), q(1), q(1), q(1)]).is_err());
-        assert!(validate_tool_args(&[q(1)]).is_ok());
+        let many = |n: usize| {
+            (0..n)
+                .map(|i| UserQuestion {
+                    id: format!("q{i}"),
+                    ..q(1)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(validate_tool_args(&many(MAX_QUESTIONS)).is_ok());
+        assert!(validate_tool_args(&many(MAX_QUESTIONS + 1)).is_err());
+        assert!(validate_tool_args(&many(2)).is_ok());
+        assert!(validate_tool_args(&[q(1), q(1)]).is_err());
     }
 
     #[test]

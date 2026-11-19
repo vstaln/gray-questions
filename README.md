@@ -10,17 +10,19 @@
 </p>
 
 A self-contained Rust sidecar that gives the agent a structured
-`request_user_input` tool for asking you 1–3 multiple-choice questions.
+`request_user_input` tool for asking structured questions: multiple choice,
+multi-select, or free text.
 
 ## What it does
 
 - Exposes `request_user_input` with question text, selectable options, and
   free-form notes.
-- Validates input in the plugin: 1–3 questions, non-empty options, and an
-  automatic "None of the above" path.
-- Delegates asking to the host with `host/ask` and waits up to 300 seconds
-  for the `{"answers": …}` reply. Missing host support returns a loud
-  error instead of hanging.
+- Validates input in the plugin: 1–12 questions with unique ids, up to 20
+  options each, and an automatic free-form row unless the question is meant
+  to be answered in the user's own words.
+- Delegates asking to the host with `host/ask` and waits for the user (Esc
+  cancels it) to return the `{"answers": …}` reply. Missing host support
+  returns a loud error instead of hanging.
 - Claims `prompt/context` to inject short usage guidelines into the system
   prompt.
 

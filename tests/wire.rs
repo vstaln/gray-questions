@@ -100,6 +100,30 @@ fn one_question() -> serde_json::Value {
 }
 
 #[test]
+fn a_free_text_question_needs_no_options() {
+    let mut h = Harness::spawn();
+    h.send(&serde_json::json!({"id": 1, "method": "plugin/manifest"}));
+    let _ = h.next_host_reply();
+    h.send(&serde_json::json!({
+        "id": 2, "method": "tool/call",
+        "params": {"name": "request_user_input", "args": {"questions": [{
+            "id": "name", "header": "Name", "question": "What should it be called?"
+        }]}}
+    }));
+    let (ask_id, ask) = h.next_ask();
+    assert_eq!(
+        ask["params"]["questions"][0]["options"],
+        serde_json::json!([])
+    );
+    h.send(&serde_json::json!({
+        "id": ask_id,
+        "result": {"answers": {"name": {"answers": ["user_note: gremlin"]}}}
+    }));
+    let reply = h.next_host_reply();
+    assert_eq!(reply["result"]["is_error"], serde_json::Value::Null);
+}
+
+#[test]
 fn manifest_and_guidance() {
     let mut h = Harness::spawn();
     h.send(&serde_json::json!({"id": 1, "method": "plugin/manifest"}));
@@ -160,16 +184,15 @@ fn tool_call_rejects_bad_args_without_asking() {
         (
             3,
             serde_json::json!({"questions": [
-                {"id":"a","header":"A","question":"q?","options":[{"label":"x","description":"y"}]},
-                {"id":"b","header":"B","question":"q?","options":[{"label":"x","description":"y"}]},
-                {"id":"c","header":"C","question":"q?","options":[{"label":"x","description":"y"}]},
-                {"id":"d","header":"D","question":"q?","options":[{"label":"x","description":"y"}]}
+                {"id":"a","header":"A","question":"q?","options":[{"label":"x"}]},
+                {"id":"b","header":"B","question":"q?","options":[{"label":"x"}]},
+                {"id":"a","header":"A","question":"q?","options":[{"label":"x"}]}
             ]}),
         ),
         (
             4,
             serde_json::json!({"questions": [
-                {"id":"a","header":"A","question":"q?","options":[]}
+                {"id":"a","header":"A","question":"  ","options":[{"label":"x"}]}
             ]}),
         ),
     ] {
